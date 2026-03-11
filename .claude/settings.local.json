@@ -12,7 +12,9 @@
       "Bash(env | grep DOUBAO)",
       "Bash(./i18n-trans scan:*)",
       "Bash(git reset:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Read(//private/tmp/test_replace/**)",
+      "Bash(/Users/apple/GolandProjects/i18n-trans/i18n-trans-test process:*)"
     ]
   }
 }

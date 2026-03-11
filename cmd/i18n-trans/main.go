@@ -54,7 +54,17 @@ var processCmd = &cobra.Command{
 	Use:   "process",
 	Short: "Full process: scan, translate, generate SQL, and optionally replace",
 	Long: `Complete workflow: scan for Chinese text, translate using Doubao AI,
-generate SQL file, and optionally replace original text with module.identification format.`,
+generate SQL file, and optionally replace original text with module.identification format.
+
+Examples:
+  # Scan, translate, generate SQL only (no replacement)
+  i18n-trans process
+
+  # Scan, translate, generate SQL, and replace Chinese text in files
+  i18n-trans process --replace
+
+  # Preview what would be replaced without actually replacing
+  i18n-trans process --dry-run`,
 	RunE: runProcess,
 }
 
