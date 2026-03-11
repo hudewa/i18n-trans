@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"i18n-trans/internal/scanner"
+	"github.com/hudewa/i18n-trans/internal/scanner"
 )
 
 func TestNew(t *testing.T) {

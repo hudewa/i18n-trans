@@ -8,11 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"i18n-trans/internal/generator"
-	"i18n-trans/internal/replacer"
-	"i18n-trans/internal/scanner"
-	"i18n-trans/internal/translator"
-	"i18n-trans/pkg/config"
+	"github.com/hudewa/i18n-trans/internal/generator"
+	"github.com/hudewa/i18n-trans/internal/replacer"
+	"github.com/hudewa/i18n-trans/internal/scanner"
+	"github.com/hudewa/i18n-trans/internal/translator"
+	"github.com/hudewa/i18n-trans/pkg/config"
 )
 
 var (

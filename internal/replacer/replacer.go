@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"i18n-trans/internal/scanner"
+	"github.com/hudewa/i18n-trans/internal/scanner"
 )
 
 // Replacer replaces Chinese text with module.identification format

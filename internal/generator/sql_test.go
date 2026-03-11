@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"i18n-trans/internal/translator"
+	"github.com/hudewa/i18n-trans/internal/translator"
 )
 
 func TestEscapeSQL(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"i18n-trans/internal/translator"
+	"github.com/hudewa/i18n-trans/internal/translator"
 )
 
 // Generator generates SQL files

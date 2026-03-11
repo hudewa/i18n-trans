@@ -1,4 +1,4 @@
-module i18n-trans
+module github.com/hudewa/i18n-trans
 
 go 1.24.2
 
