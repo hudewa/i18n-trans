@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/gamoji-trans.iml" filepath="$PROJECT_DIR$/.idea/gamoji-trans.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/i18n-trans.iml" filepath="$PROJECT_DIR$/.idea/i18n-trans.iml" />
     </modules>
   </component>
 </project>

@@ -17,9 +17,9 @@ type Config struct {
 
 // DoubaoConfig holds Doubao API configuration
 type DoubaoConfig struct {
-	APIKey   string `mapstructure:"api_key"`
-	BaseURL  string `mapstructure:"base_url"`
-	Model    string `mapstructure:"model"`
+	APIKey  string `mapstructure:"api_key"`
+	BaseURL string `mapstructure:"base_url"`
+	Model   string `mapstructure:"model"`
 }
 
 // ScanConfig holds scanner configuration
@@ -37,15 +37,15 @@ type OutputConfig struct {
 }
 
 // DefaultAPIKey 默认使用腾讯云提供的 API Key
-const DefaultAPIKey = "sk-sp-BzqRlcJaaNzdOJbwgemHPg2EKaBH2jT75n5Q5OoUR3a1eEby"
+//const DefaultAPIKey = ""
 
 // DefaultConfig returns a default configuration
 func DefaultConfig() *Config {
 	return &Config{
 		Doubao: DoubaoConfig{
-			APIKey:   DefaultAPIKey,
-			BaseURL:  "https://ark.cn-beijing.volces.com/api/v3",
-			Model:    "doubao-1.5-pro-32k",
+			APIKey:  "",
+			BaseURL: "https://ark.cn-beijing.volces.com/api/v3",
+			Model:   "doubao-1.5-pro-32k",
 		},
 		Scan: ScanConfig{
 			IncludeExt:      []string{".go", ".js", ".vue", ".ts", ".tsx", ".jsx", ".json", ".yaml", ".yml"},

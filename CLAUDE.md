@@ -99,8 +99,6 @@ type TranslationResult struct {
 
 ## 配置说明
 
-默认使用腾讯云提供的 API Key：`sk-sp-BzqRlcJaaNzdOJbwgemHPg2EKaBH2jT75n5Q5OoUR3a1eEby`
-
 用户也可以通过配置文件或环境变量自定义 API Key。
 
 示例 `config.yaml`：
