@@ -46,8 +46,6 @@ func TestShouldSkipText(t *testing.T) {
 		{"普通文本", "你好世界", false},
 		{"带路径的图片", "/path/to/image.png", true},
 		{"大写扩展名", "IMAGE.PNG", true},
-		{"gorm标签", `gorm:"column:user_id;default:0;not null;comment:用户id"`, true},
-		{"普通gorm文本", "gorm is an ORM", false},
 	}
 
 	for _, tt := range tests {
@@ -71,6 +69,9 @@ func TestShouldSkipLine(t *testing.T) {
 		{"包含//NOTRANS", `fmt.Println("你好") //NOTRANS`, true},
 		{"不包含noTrans", `fmt.Println("你好") // 其他注释`, false},
 		{"普通代码", `fmt.Println("你好")`, false},
+		{"包含gorm标签", "UserID uint64 `gorm:\"column:user_id;comment:用户id\"`", true},
+		{"包含gorm标签双引号", `gorm:"column:user_id;comment:用户id"`, true},
+		{"普通gorm变量", `gorm := "test"`, false},
 	}
 
 	for _, tt := range tests {
