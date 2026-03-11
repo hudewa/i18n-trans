@@ -16,15 +16,16 @@ import (
 )
 
 var (
-	cfgFile    string
-	scanDir    string
-	outputDir  string
-	replace    bool
-	dryRun     bool
-	apiKey     string
-	baseURL    string
-	model      string
-	moduleName string
+	cfgFile      string
+	initOutput   string // init 命令的输出文件路径
+	scanDir      string
+	outputDir    string
+	replace      bool
+	dryRun       bool
+	apiKey       string
+	baseURL      string
+	model        string
+	moduleName   string
 )
 
 var rootCmd = &cobra.Command{
@@ -90,7 +91,7 @@ func init() {
 	processCmd.Flags().StringVar(&moduleName, "module", "", "module name for identification")
 
 	// Init command flags
-	initCmd.Flags().StringVarP(&cfgFile, "output", "o", "config.yaml", "output file path")
+	initCmd.Flags().StringVarP(&initOutput, "output", "o", "config.yaml", "output file path")
 
 	// Add commands
 	rootCmd.AddCommand(scanCmd)
@@ -364,10 +365,10 @@ func runProcess(cmd *cobra.Command, args []string) error {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	if err := config.WriteExampleConfig(cfgFile); err != nil {
+	if err := config.WriteExampleConfig(initOutput); err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
-	fmt.Printf("Example configuration file created: %s\n", cfgFile)
+	fmt.Printf("Example configuration file created: %s\n", initOutput)
 	return nil
 }
 
