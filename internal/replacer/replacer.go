@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"gamoji-trans/internal/scanner"
+	"i18n-trans/internal/scanner"
 )
 
 // Replacer replaces Chinese text with module.identification format

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"gamoji-trans/internal/translator"
+	"i18n-trans/internal/translator"
 )
 
 // Generator generates SQL files

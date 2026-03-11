@@ -8,11 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gamoji-trans/internal/generator"
-	"gamoji-trans/internal/replacer"
-	"gamoji-trans/internal/scanner"
-	"gamoji-trans/internal/translator"
-	"gamoji-trans/pkg/config"
+	"i18n-trans/internal/generator"
+	"i18n-trans/internal/replacer"
+	"i18n-trans/internal/scanner"
+	"i18n-trans/internal/translator"
+	"i18n-trans/pkg/config"
 )
 
 var (

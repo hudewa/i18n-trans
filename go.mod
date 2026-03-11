@@ -1,4 +1,4 @@
-module gamoji-trans
+module i18n-trans
 
 go 1.24.2
 

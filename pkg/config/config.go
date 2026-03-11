@@ -36,11 +36,14 @@ type OutputConfig struct {
 	UpdatedBy  string `mapstructure:"updated_by"`
 }
 
+// DefaultAPIKey 默认使用腾讯云提供的 API Key
+const DefaultAPIKey = "sk-sp-BzqRlcJaaNzdOJbwgemHPg2EKaBH2jT75n5Q5OoUR3a1eEby"
+
 // DefaultConfig returns a default configuration
 func DefaultConfig() *Config {
 	return &Config{
 		Doubao: DoubaoConfig{
-			APIKey:   "",
+			APIKey:   DefaultAPIKey,
 			BaseURL:  "https://ark.cn-beijing.volces.com/api/v3",
 			Model:    "doubao-1.5-pro-32k",
 		},
