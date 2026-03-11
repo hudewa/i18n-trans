@@ -46,6 +46,8 @@ func TestShouldSkipText(t *testing.T) {
 		{"普通文本", "你好世界", false},
 		{"带路径的图片", "/path/to/image.png", true},
 		{"大写扩展名", "IMAGE.PNG", true},
+		{"gorm标签", `gorm:"column:user_id;default:0;not null;comment:用户id"`, true},
+		{"普通gorm文本", "gorm is an ORM", false},
 	}
 
 	for _, tt := range tests {
@@ -53,6 +55,29 @@ func TestShouldSkipText(t *testing.T) {
 			result := shouldSkipText(tt.input)
 			if result != tt.expected {
 				t.Errorf("shouldSkipText(%q) = %v, want %v", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestShouldSkipLine(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"包含//noTrans", `fmt.Println("你好") //noTrans`, true},
+		{"包含// notrans", `fmt.Println("你好") // notrans`, true},
+		{"包含//NOTRANS", `fmt.Println("你好") //NOTRANS`, true},
+		{"不包含noTrans", `fmt.Println("你好") // 其他注释`, false},
+		{"普通代码", `fmt.Println("你好")`, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := shouldSkipLine(tt.input)
+			if result != tt.expected {
+				t.Errorf("shouldSkipLine(%q) = %v, want %v", tt.input, result, tt.expected)
 			}
 		})
 	}

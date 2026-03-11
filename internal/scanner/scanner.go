@@ -144,6 +144,10 @@ func (s *Scanner) scanFile(path string) ([]Match, error) {
 		lineNum++
 		line := scanner.Text()
 
+		// Skip lines with //noTrans or // notrans comment
+		if shouldSkipLine(line) {
+			continue
+		}
 		// Find double quote matches
 		doubleMatches := s.findMatchesInLine(path, lineNum, line, doubleQuotePattern, `"`)
 		matches = append(matches, doubleMatches...)
@@ -192,15 +196,34 @@ func (s *Scanner) findMatchesInLine(filePath string, lineNum int, line string, p
 	return matches
 }
 
-// shouldSkipText checks if text should be skipped (e.g., image paths)
+// shouldSkipText checks if text should be skipped (e.g., image paths, gorm tags)
 func shouldSkipText(text string) bool {
 	lower := strings.ToLower(text)
-	return strings.HasSuffix(lower, ".png") ||
+
+	// Skip image paths
+	if strings.HasSuffix(lower, ".png") ||
 		strings.HasSuffix(lower, ".webp") ||
 		strings.HasSuffix(lower, ".jpg") ||
 		strings.HasSuffix(lower, ".jpeg") ||
 		strings.HasSuffix(lower, ".gif") ||
-		strings.HasSuffix(lower, ".svg")
+		strings.HasSuffix(lower, ".svg") {
+		return true
+	}
+
+	// Skip gorm struct tags
+	if strings.HasPrefix(text, "gorm:") {
+		return true
+	}
+
+	return false
+}
+
+// shouldSkipLine checks if a line should be skipped
+// Skips lines containing //noTrans or // notrans comments
+func shouldSkipLine(line string) bool {
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "//notrans") ||
+		strings.Contains(lower, "// notrans")
 }
 
 // generateID generates an MD5 hash of the text (first 8 characters)
