@@ -113,23 +113,33 @@ func runScan(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// 确定扫描目录：命令行参数优先，其次配置文件，最后默认当前目录
+	scanDirs := getScanDirs(cfg.Scan.Dir, scanDir)
+
 	// Create scanner
 	s := scanner.New(cfg.Scan.IncludeExt, cfg.Scan.ExcludeDirs, cfg.Scan.ExcludePatterns)
 
-	fmt.Printf("Scanning directory: %s\n", scanDir)
+	fmt.Printf("Scanning directories: %v\n", scanDirs)
 	fmt.Println("This may take a while...")
 
-	// Scan directory
-	matches, err := s.Scan(scanDir)
+	// Scan directories
+	var allMatches []scanner.Match
+	for _, dir := range scanDirs {
+		matches, err := s.Scan(dir)
+		if err != nil {
+			return fmt.Errorf("scan failed for %s: %w", dir, err)
+		}
+		allMatches = append(allMatches, matches...)
+	}
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}
 
 	// Display results
-	fmt.Printf("\nFound %d Chinese text occurrences:\n", len(matches))
+	fmt.Printf("\nFound %d Chinese text occurrences:\n", len(allMatches))
 	fmt.Println(strings.Repeat("=", 60))
 
-	files := scanner.GroupByFile(matches)
+	files := scanner.GroupByFile(allMatches)
 	for filePath, fileMatches := range files {
 		fmt.Printf("\nFile: %s\n", filePath)
 		for _, m := range fileMatches {
@@ -166,26 +176,33 @@ func runTranslate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// 确定扫描目录：命令行参数优先，其次配置文件，最后默认当前目录
+	scanDirs := getScanDirs(cfg.Scan.Dir, scanDir)
+
 	// Create scanner
 	s := scanner.New(cfg.Scan.IncludeExt, cfg.Scan.ExcludeDirs, cfg.Scan.ExcludePatterns)
 
-	fmt.Printf("Scanning directory: %s\n", scanDir)
+	fmt.Printf("Scanning directories: %v\n", scanDirs)
 
-	// Scan directory
-	matches, err := s.Scan(scanDir)
-	if err != nil {
-		return fmt.Errorf("scan failed: %w", err)
+	// Scan directories
+	var allMatches []scanner.Match
+	for _, dir := range scanDirs {
+		matches, err := s.Scan(dir)
+		if err != nil {
+			return fmt.Errorf("scan failed for %s: %w", dir, err)
+		}
+		allMatches = append(allMatches, matches...)
 	}
 
-	if len(matches) == 0 {
+	if len(allMatches) == 0 {
 		fmt.Println("No Chinese text found.")
 		return nil
 	}
 
-	fmt.Printf("Found %d Chinese text occurrences\n", len(matches))
+	fmt.Printf("Found %d Chinese text occurrences\n", len(allMatches))
 
 	// Get unique Chinese texts
-	uniqueTexts := scanner.UniqueChineseTexts(matches)
+	uniqueTexts := scanner.UniqueChineseTexts(allMatches)
 	fmt.Printf("Unique texts to translate: %d\n", len(uniqueTexts))
 
 	// Create translator
@@ -195,7 +212,7 @@ func runTranslate(cmd *cobra.Command, args []string) error {
 
 	// Translate
 	ctx := context.Background()
-	results, err := t.TranslateTexts(ctx, uniqueTexts, nil)
+	results, err := t.TranslateTexts(ctx, uniqueTexts)
 	if err != nil {
 		return fmt.Errorf("translation failed: %w", err)
 	}
@@ -244,26 +261,33 @@ func runProcess(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// 确定扫描目录：命令行参数优先，其次配置文件，最后默认当前目录
+	scanDirs := getScanDirs(cfg.Scan.Dir, scanDir)
+
 	// Create scanner
 	s := scanner.New(cfg.Scan.IncludeExt, cfg.Scan.ExcludeDirs, cfg.Scan.ExcludePatterns)
 
-	fmt.Printf("Scanning directory: %s\n", scanDir)
+	fmt.Printf("Scanning directories: %v\n", scanDirs)
 
-	// Scan directory
-	matches, err := s.Scan(scanDir)
-	if err != nil {
-		return fmt.Errorf("scan failed: %w", err)
+	// Scan directories
+	var allMatches []scanner.Match
+	for _, dir := range scanDirs {
+		matches, err := s.Scan(dir)
+		if err != nil {
+			return fmt.Errorf("scan failed for %s: %w", dir, err)
+		}
+		allMatches = append(allMatches, matches...)
 	}
 
-	if len(matches) == 0 {
+	if len(allMatches) == 0 {
 		fmt.Println("No Chinese text found.")
 		return nil
 	}
 
-	fmt.Printf("Found %d Chinese text occurrences\n", len(matches))
+	fmt.Printf("Found %d Chinese text occurrences\n", len(allMatches))
 
 	// Get unique Chinese texts and their IDs
-	uniqueTexts := scanner.UniqueChineseTexts(matches)
+	uniqueTexts := scanner.UniqueChineseTexts(allMatches)
 	fmt.Printf("Unique texts to translate: %d\n", len(uniqueTexts))
 
 	// Create translator
@@ -273,7 +297,7 @@ func runProcess(cmd *cobra.Command, args []string) error {
 
 	// Translate
 	ctx := context.Background()
-	results, err := t.TranslateTexts(ctx, uniqueTexts, nil)
+	results, err := t.TranslateTexts(ctx, uniqueTexts)
 	if err != nil {
 		return fmt.Errorf("translation failed: %w", err)
 	}
@@ -302,9 +326,9 @@ func runProcess(cmd *cobra.Command, args []string) error {
 	}
 
 	// Update match IDs from translation results
-	for i := range matches {
-		if id, ok := textToID[matches[i].ChineseText]; ok {
-			matches[i].ID = id
+	for i := range allMatches {
+		if id, ok := textToID[allMatches[i].ChineseText]; ok {
+			allMatches[i].ID = id
 		}
 	}
 
@@ -313,12 +337,12 @@ func runProcess(cmd *cobra.Command, args []string) error {
 		r := replacer.New(cfg.Output.ModuleName, dryRun)
 
 		if dryRun {
-			fmt.Println(r.Preview(matches))
+			fmt.Println(r.Preview(allMatches))
 		}
 
 		if replace {
 			fmt.Println("Replacing Chinese text in files...")
-			replaceResults, err := r.ReplaceAll(matches)
+			replaceResults, err := r.ReplaceAll(allMatches)
 			if err != nil {
 				return fmt.Errorf("replacement failed: %w", err)
 			}
@@ -345,4 +369,31 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("Example configuration file created: %s\n", cfgFile)
 	return nil
+}
+
+// getScanDirs 确定要扫描的目录列表
+//
+// 优先级：
+// 1. 如果命令行指定了 -d 参数（且不是默认值 "."），使用命令行参数
+// 2. 如果配置文件中有 scan.dir 设置，使用配置文件的设置
+// 3. 否则使用默认值 ["."]（当前目录）
+//
+// 参数说明：
+//   - cfgDirs: 配置文件中 scan.dir 的值
+//   - cmdDir: 命令行 -d 参数的值
+//
+// 返回值：要扫描的目录列表
+func getScanDirs(cfgDirs []string, cmdDir string) []string {
+	// 如果命令行参数不是默认值，优先使用命令行参数
+	if cmdDir != "." {
+		return []string{cmdDir}
+	}
+
+	// 如果配置文件中有设置，使用配置文件的设置
+	if len(cfgDirs) > 0 {
+		return cfgDirs
+	}
+
+	// 默认扫描当前目录
+	return []string{"."}
 }

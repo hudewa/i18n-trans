@@ -1,0 +1,42 @@
+# i18n-trans Configuration
+# 翻译工具配置文件
+
+# 翻译 API 配置（必填）
+trans:
+  keyId: "4f9f124d-a094-4fea-9967-843e5994161a"
+  baseURL: "https://ark.cn-beijing.volces.com/api/v3"
+  model: "doubao-1-5-pro-32k-250115"
+
+# 扫描器配置（可选）
+scan:
+  # 要扫描的目录列表（可选）
+  # 如果为空或未设置，默认扫描当前目录 "."
+  # 可以指定多个目录，如: ["./src", "./components", "./pages"]
+  dir: []
+  include_ext:
+    - ".go"
+    - ".js"
+    - ".vue"
+    - ".ts"
+    - ".tsx"
+    - ".jsx"
+    - ".json"
+    - ".yaml"
+    - ".yml"
+  exclude_dirs:
+    - "node_modules"
+    - ".git"
+    - "dist"
+    - "build"
+    - "vendor"
+    - ".idea"
+    - ".vscode"
+  exclude_patterns:
+    - "*_test.go"
+    - "*.min.js"
+
+# 输出配置（可选）
+output:
+  sql_dir: "./sql"
+  module_name: "doubao"
+  updated_by: "doubao"

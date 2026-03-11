@@ -122,12 +122,12 @@ func TestWriteExampleConfig(t *testing.T) {
 	contentStr := string(content)
 
 	// 检查包含关键配置项
-	if !contains(contentStr, "doubao:") {
-		t.Error("Config should contain doubao section")
+	if !contains(contentStr, "trans:") {
+		t.Error("Config should contain trans section")
 	}
 
-	if !contains(contentStr, "api_key:") {
-		t.Error("Config should contain api_key")
+	if !contains(contentStr, "keyId:") {
+		t.Error("Config should contain keyId")
 	}
 
 	if !contains(contentStr, "scan:") {
@@ -144,9 +144,9 @@ func TestLoadWithConfigFile(t *testing.T) {
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
 	configContent := `
-doubao:
-  api_key: "test-api-key"
-  base_url: "https://custom.api.com"
+trans:
+  keyId: "test-api-key"
+  baseURL: "https://custom.api.com"
   model: "custom-model"
 scan:
   include_ext:
