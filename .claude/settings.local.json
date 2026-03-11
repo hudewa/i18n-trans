@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "Bash(go test:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(go build:*)",
+      "Bash(mv configs/config.yaml configs/config.yaml.bak && go run ./cmd/gamoji-trans process -d ./test 2>&1 || true)",
+      "Bash(mv configs/config.yaml configs/config.yaml.bak && ./i18n-trans process -d ./test 2>&1; mv configs/config.yaml.bak configs/config.yaml)",
+      "Bash(env | grep DOUBAO)",
+      "Bash(./i18n-trans scan:*)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)"
+    ]
+  }
+}

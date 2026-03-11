@@ -116,13 +116,9 @@ func Load(configPath string) (*Config, error) {
 		// Priority 2: config.yaml (当前目录)
 		if configFileUsed == "" {
 			if _, err := os.Stat("config.yaml"); err == nil {
+				// 创建新的 viper 实例，避免之前的设置干扰
 				v = viper.New()
 				v.SetConfigType("yaml")
-				v.SetDefault("trans", cfg.Trans)
-				v.SetDefault("doubao", cfg.Doubao)
-				v.SetDefault("scan", cfg.Scan)
-				v.SetDefault("scan.dir", cfg.Scan.Dir)
-				v.SetDefault("output", cfg.Output)
 				v.SetConfigFile("config.yaml")
 				if err := v.ReadInConfig(); err == nil {
 					configFileUsed = "config.yaml"
@@ -138,11 +134,6 @@ func Load(configPath string) (*Config, error) {
 				if _, err := os.Stat(globalConfig); err == nil {
 					v = viper.New()
 					v.SetConfigType("yaml")
-					v.SetDefault("trans", cfg.Trans)
-					v.SetDefault("doubao", cfg.Doubao)
-					v.SetDefault("scan", cfg.Scan)
-					v.SetDefault("scan.dir", cfg.Scan.Dir)
-					v.SetDefault("output", cfg.Output)
 					v.SetConfigFile(globalConfig)
 					if err := v.ReadInConfig(); err == nil {
 						configFileUsed = globalConfig
@@ -169,6 +160,12 @@ func Load(configPath string) (*Config, error) {
 	// 如果没有找到配置文件，返回特殊标记（需要在同步前设置）
 	if configFileUsed == "" {
 		cfg.Trans.KeyID = "__NO_CONFIG_FILE__"
+	} else {
+		// 确保配置文件的值被正确读取
+		// 如果 trans.keyId 为空但 doubao.api_key 有值，同步过去
+		if cfg.Trans.KeyID == "" && cfg.Doubao.APIKey != "" {
+			cfg.Trans.KeyID = cfg.Doubao.APIKey
+		}
 	}
 
 	// 将 trans 配置同步到 doubao（保持兼容性）
