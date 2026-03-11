@@ -302,6 +302,9 @@ func TestFindMatchesInLine(t *testing.T) {
 		{"无中文", `fmt.Println("hello")`, `"`, 0},
 		{"多个中文", `a("你好", "世界")`, `"`, 2},
 		{"图片路径", `img("icon.png")`, `"`, 0},
+		{"注释中的中文", `// "注释中的中文"`, `"`, 0},
+		{"代码和注释", `fmt.Println("你好") // 注释`, `"`, 1},
+		{"只有注释", `// 这是注释`, `"`, 0},
 	}
 
 	for _, tt := range tests {

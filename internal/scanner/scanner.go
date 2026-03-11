@@ -201,8 +201,17 @@ func (s *Scanner) scanFile(path string) ([]Match, error) {
 func (s *Scanner) findMatchesInLine(filePath string, lineNum int, line string, pattern *regexp.Regexp, quoteType string) []Match {
 	var matches []Match
 
+	// Find comment start position (for Go // comments)
+	commentStart := strings.Index(line, "//")
+
 	for _, match := range pattern.FindAllStringIndex(line, -1) {
 		start, end := match[0], match[1]
+
+		// Skip if match is inside a comment (after //)
+		if commentStart != -1 && start > commentStart {
+			continue
+		}
+
 		fullMatch := line[start:end]
 		innerText := line[start+1 : end-1] // Remove quotes
 
