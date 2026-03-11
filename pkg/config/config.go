@@ -76,7 +76,7 @@ func DefaultConfig() *Config {
 }
 
 // Load loads configuration from file and environment variables
-// Priority: 1. configs/config.yaml 2. config.yaml (当前目录) 3. ~/.gamoji-trans/config 4. 环境变量
+// Priority: 1. 指定路径 2. configs/config.yaml (当前目录) 3. config.yaml (当前目录) 4. ~/.gamoji-trans/config 5. 环境变量
 func Load(configPath string) (*Config, error) {
 	cfg := DefaultConfig()
 
@@ -105,28 +105,37 @@ func Load(configPath string) (*Config, error) {
 			configFileUsed = configPath
 		}
 	} else {
-		// Priority 1: configs/config.yaml (项目内配置)
-		v.AddConfigPath("configs")
-		v.SetConfigName("config")
-		if err := v.ReadInConfig(); err == nil {
-			configFileUsed = "configs/config.yaml"
-		} else {
-			// Priority 2: config.yaml (当前目录)
-			v = viper.New()
-			v.SetConfigType("yaml")
-			v.SetDefault("trans", cfg.Trans)
-			v.SetDefault("doubao", cfg.Doubao)
-			v.SetDefault("scan", cfg.Scan)
-			v.SetDefault("scan.dir", cfg.Scan.Dir)
-			v.SetDefault("output", cfg.Output)
-			v.AddConfigPath(".")
-			v.SetConfigName("config")
+		// Priority 1: configs/config.yaml (当前目录下的 configs 文件夹)
+		if _, err := os.Stat("configs/config.yaml"); err == nil {
+			v.SetConfigFile("configs/config.yaml")
 			if err := v.ReadInConfig(); err == nil {
-				configFileUsed = "config.yaml"
-			} else {
-				// Priority 3: ~/.gamoji-trans/config
-				home, err := os.UserHomeDir()
-				if err == nil {
+				configFileUsed = "configs/config.yaml"
+			}
+		}
+
+		// Priority 2: config.yaml (当前目录)
+		if configFileUsed == "" {
+			if _, err := os.Stat("config.yaml"); err == nil {
+				v = viper.New()
+				v.SetConfigType("yaml")
+				v.SetDefault("trans", cfg.Trans)
+				v.SetDefault("doubao", cfg.Doubao)
+				v.SetDefault("scan", cfg.Scan)
+				v.SetDefault("scan.dir", cfg.Scan.Dir)
+				v.SetDefault("output", cfg.Output)
+				v.SetConfigFile("config.yaml")
+				if err := v.ReadInConfig(); err == nil {
+					configFileUsed = "config.yaml"
+				}
+			}
+		}
+
+		// Priority 3: ~/.gamoji-trans/config
+		if configFileUsed == "" {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				globalConfig := filepath.Join(home, ".gamoji-trans/config")
+				if _, err := os.Stat(globalConfig); err == nil {
 					v = viper.New()
 					v.SetConfigType("yaml")
 					v.SetDefault("trans", cfg.Trans)
@@ -134,10 +143,9 @@ func Load(configPath string) (*Config, error) {
 					v.SetDefault("scan", cfg.Scan)
 					v.SetDefault("scan.dir", cfg.Scan.Dir)
 					v.SetDefault("output", cfg.Output)
-					v.AddConfigPath(filepath.Join(home, ".gamoji-trans"))
-					v.SetConfigName("config")
+					v.SetConfigFile(globalConfig)
 					if err := v.ReadInConfig(); err == nil {
-						configFileUsed = filepath.Join(home, ".gamoji-trans/config")
+						configFileUsed = globalConfig
 					}
 				}
 			}
