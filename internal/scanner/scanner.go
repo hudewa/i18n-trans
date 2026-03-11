@@ -14,13 +14,13 @@ import (
 
 // Match represents a found Chinese text match
 type Match struct {
-	FilePath   string `json:"file_path"`
-	Line       int    `json:"line"`
-	Column     int    `json:"column"`
-	RawText    string `json:"raw_text"`
-	QuoteType  string `json:"quote_type"` // " or '
+	FilePath    string `json:"file_path"`
+	Line        int    `json:"line"`
+	Column      int    `json:"column"`
+	RawText     string `json:"raw_text"`
+	QuoteType   string `json:"quote_type"` // " or '
 	ChineseText string `json:"chinese_text"`
-	ID         string `json:"id"`         // MD5 hash of Chinese text
+	ID          string `json:"id"` // MD5 hash of Chinese text
 }
 
 // Scanner scans files for Chinese text
@@ -34,6 +34,8 @@ type Scanner struct {
 var (
 	doubleQuotePattern = regexp.MustCompile(`"([^"]*)"`)
 	singleQuotePattern = regexp.MustCompile(`'([^']*)'`)
+	// Pattern to match function definitions: func (receiver) Name(params) returns {
+	funcPattern = regexp.MustCompile(`^\s*func\s+(\([^)]*\)\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\(`)
 )
 
 // containsChinese checks if a string contains Chinese characters
@@ -136,28 +138,63 @@ func (s *Scanner) scanFile(path string) ([]Match, error) {
 	}
 	defer file.Close()
 
-	var matches []Match
+	// Read all lines first to handle //noTrans + function skipping
+	var lines []string
 	scanner := bufio.NewScanner(file)
-	lineNum := 0
-
 	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
 
-		// Skip lines with //noTrans or // notrans comment, or gorm struct tags
+	var matches []Match
+	skipUntilBraceClose := false
+	braceDepth := 0
+
+	for lineNum, line := range lines {
+		lineNum++ // 1-based line number
+
+		// Handle //noTrans + function skipping
+		if skipUntilBraceClose {
+			// Count braces to track function depth
+			braceDepth += strings.Count(line, "{")
+			braceDepth -= strings.Count(line, "}")
+			if braceDepth <= 0 {
+				skipUntilBraceClose = false
+				braceDepth = 0
+			}
+			continue
+		}
+
+		// Check if this line has //noTrans and next line looks like a function
+		if hasNoTransComment(line) {
+			// Check if next line exists and looks like a function definition
+			if lineNum < len(lines) {
+				nextLine := lines[lineNum]
+				if looksLikeFunction(nextLine) {
+					skipUntilBraceClose = true
+					braceDepth = strings.Count(nextLine, "{")
+					continue
+				}
+			}
+		}
+
+		// Skip lines with //noTrans or // notrans comment, or gorm struct tags, etc.
 		if shouldSkipLine(line) {
 			continue
 		}
+
 		// Find double quote matches
-		doubleMatches := s.findMatchesInLine(path, lineNum, line, doubleQuotePattern, `"`)
+		doubleMatches := s.findMatchesInLine(path, lineNum, line, doubleQuotePattern, "\"")
 		matches = append(matches, doubleMatches...)
 
 		// Find single quote matches
-		singleMatches := s.findMatchesInLine(path, lineNum, line, singleQuotePattern, `'`)
+		singleMatches := s.findMatchesInLine(path, lineNum, line, singleQuotePattern, "'")
 		matches = append(matches, singleMatches...)
 	}
 
-	return matches, scanner.Err()
+	return matches, nil
 }
 
 // findMatchesInLine finds matches in a single line
@@ -207,18 +244,44 @@ func shouldSkipText(text string) bool {
 		strings.HasSuffix(lower, ".svg")
 }
 
+// hasNoTransComment checks if line contains //noTrans comment
+func hasNoTransComment(line string) bool {
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "//notrans") ||
+		strings.Contains(lower, "// notrans")
+}
+
+// looksLikeFunction checks if a line looks like a function definition
+func looksLikeFunction(line string) bool {
+	return funcPattern.MatchString(line)
+}
+
 // shouldSkipLine checks if a line should be skipped
 // Skips lines containing:
 // - //noTrans or // notrans comments
 // - gorm struct tags
+// - lines starting with //
+// - lines containing both json and comment tags
 func shouldSkipLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	lower := strings.ToLower(line)
+
+	// Skip lines starting with //
+	if strings.HasPrefix(trimmed, "//") {
+		return true
+	}
+
 	// Skip gorm struct tags
-	if strings.Contains(line, `gorm:"`) {
+	if strings.Contains(line, "gorm:\"") {
+		return true
+	}
+
+	// Skip lines with both json and comment tags
+	if strings.Contains(lower, "json:\"") && strings.Contains(lower, "comment:\"") {
 		return true
 	}
 
 	// Skip lines with //noTrans comment
-	lower := strings.ToLower(line)
 	return strings.Contains(lower, "//notrans") ||
 		strings.Contains(lower, "// notrans")
 }

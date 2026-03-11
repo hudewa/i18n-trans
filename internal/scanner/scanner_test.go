@@ -70,8 +70,11 @@ func TestShouldSkipLine(t *testing.T) {
 		{"不包含noTrans", `fmt.Println("你好") // 其他注释`, false},
 		{"普通代码", `fmt.Println("你好")`, false},
 		{"包含gorm标签", "UserID uint64 `gorm:\"column:user_id;comment:用户id\"`", true},
-		{"包含gorm标签双引号", `gorm:"column:user_id;comment:用户id"`, true},
-		{"普通gorm变量", `gorm := "test"`, false},
+		{"包含gorm标签双引号", "gorm:\"column:user_id;comment:用户id\"", true},
+		{"普通gorm变量", "gorm := \"test\"", false},
+		{"以//开头", "// follower_count int", true},
+		{"包含json和comment", "EventType string `json:\"event_type\" comment:\"是否预制事件\"`", true},
+		{"只有json", "Name string `json:\"name\"`", false},
 	}
 
 	for _, tt := range tests {

@@ -63,7 +63,7 @@ func DefaultConfig() *Config {
 		},
 		Scan: ScanConfig{
 			Dir:             []string{}, // 为空时默认扫描当前目录
-			IncludeExt:      []string{".go", ".js", ".vue", ".ts", ".tsx", ".jsx", ".json", ".yaml", ".yml"},
+			IncludeExt:      []string{".go"}, // 只扫描 Go 文件
 			ExcludeDirs:     []string{"node_modules", ".git", "dist", "build", "vendor", ".idea", ".vscode"},
 			ExcludePatterns: []string{"*_test.go", "*.min.js"},
 		},
