@@ -70,8 +70,8 @@ func DefaultConfig() *Config {
 		},
 		Output: OutputConfig{
 			SQLDir:      "./sql",
-			ModuleName:  "doubao",
-			UpdatedBy:   "doubao",
+			ModuleName:  "ai",
+			UpdatedBy:   "ai",
 			ReplaceMode: "i18n",
 		},
 	}
@@ -279,8 +279,8 @@ scan:
 # 输出配置（可选，使用默认值可省略）
 output:
   sql_dir: "./sql"
-  module_name: "doubao"
-  updated_by: "doubao"
+  module_name: "ai"
+  updated_by: "ai"
   replace_mode: "i18n"   # 替换模式: "i18n" (默认) 或 "simple"
                         # i18n:   i18n.TextT(ctx, "module.id")
                         # simple: "module.id"

@@ -119,6 +119,11 @@ func (r *Replacer) replaceFile(filePath string, matches []scanner.Match) (Replac
 
 // replaceInLine replaces the Chinese text in a line
 func (r *Replacer) replaceInLine(line string, match scanner.Match) (string, bool) {
+	// Handle Sprintf case - need to replace the entire Sprintf call
+	if match.IsSprintf {
+		return r.replaceSprintfInLine(line, match)
+	}
+
 	// Build replacement string based on mode
 	replacement := r.buildReplacement(match)
 
@@ -132,9 +137,65 @@ func (r *Replacer) replaceInLine(line string, match scanner.Match) (string, bool
 	return line[:idx] + replacement + line[idx+len(match.RawText):], true
 }
 
+// replaceSprintfInLine replaces the entire Sprintf call
+func (r *Replacer) replaceSprintfInLine(line string, match scanner.Match) (string, bool) {
+	// Build replacement
+	replacement := r.buildReplacement(match)
+
+	// Find the Sprintf prefix in the line
+	sprintfIdx := strings.Index(strings.ToLower(line), "sprintf")
+	if sprintfIdx == -1 {
+		// Fallback to normal replacement
+		idx := strings.Index(line, match.RawText)
+		if idx == -1 {
+			return r.replaceWithFlexibility(line, match)
+		}
+		return line[:idx] + replacement + line[idx+len(match.RawText):], true
+	}
+
+	// Find the start of Sprintf call (include fmt. prefix if present)
+	startIdx := sprintfIdx
+	if sprintfIdx >= 4 && line[sprintfIdx-4:sprintfIdx] == "fmt." {
+		startIdx = sprintfIdx - 4
+	}
+
+	// Find the matching closing parenthesis
+	parenStart := strings.Index(line[startIdx:], "(") + startIdx
+	if parenStart < startIdx {
+		return line, false
+	}
+
+	// Find the matching closing paren
+	parenDepth := 0
+	endIdx := -1
+	for i := parenStart; i < len(line); i++ {
+		if line[i] == '(' {
+			parenDepth++
+		} else if line[i] == ')' {
+			parenDepth--
+			if parenDepth == 0 {
+				endIdx = i + 1
+				break
+			}
+		}
+	}
+
+	if endIdx == -1 {
+		return line, false
+	}
+
+	// Replace the entire Sprintf call
+	return line[:startIdx] + replacement + line[endIdx:], true
+}
+
 // buildReplacement builds the replacement string based on replace mode
 func (r *Replacer) buildReplacement(match scanner.Match) string {
 	identifier := r.moduleName + "." + match.ID
+
+	// Handle Sprintf case
+	if match.IsSprintf && len(match.SprintfArgs) > 0 {
+		return r.buildSprintfReplacement(match, identifier)
+	}
 
 	if r.replaceMode == "i18n" {
 		// i18n mode: i18n.TextT(ctx, "module.id")
@@ -145,8 +206,27 @@ func (r *Replacer) buildReplacement(match scanner.Match) string {
 	return match.QuoteType + identifier + match.QuoteType
 }
 
+// buildSprintfReplacement builds replacement for Sprintf pattern
+// fmt.Sprintf("积分兑换商品只能全部退款%d", refundPrice) --> i18n.TextTf(ctx, "ai.id", refundPrice)
+func (r *Replacer) buildSprintfReplacement(match scanner.Match, identifier string) string {
+	args := strings.Join(match.SprintfArgs, ", ")
+
+	if r.replaceMode == "i18n" {
+		// i18n mode: i18n.TextTf(ctx, "module.id", args...)
+		return "i18n.TextTf(ctx, " + match.QuoteType + identifier + match.QuoteType + ", " + args + ")"
+	}
+
+	// Simple mode: fmt.Sprintf("module.id", args...)
+	return "fmt.Sprintf(" + match.QuoteType + identifier + match.QuoteType + ", " + args + ")"
+}
+
 // replaceWithFlexibility tries to find and replace with more flexibility
 func (r *Replacer) replaceWithFlexibility(line string, match scanner.Match) (string, bool) {
+	// Handle Sprintf case
+	if match.IsSprintf {
+		return r.replaceSprintfInLine(line, match)
+	}
+
 	// Extract the Chinese text
 	chineseText := match.ChineseText
 

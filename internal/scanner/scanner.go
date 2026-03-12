@@ -14,13 +14,16 @@ import (
 
 // Match represents a found Chinese text match
 type Match struct {
-	FilePath    string `json:"file_path"`
-	Line        int    `json:"line"`
-	Column      int    `json:"column"`
-	RawText     string `json:"raw_text"`
-	QuoteType   string `json:"quote_type"` // " or '
-	ChineseText string `json:"chinese_text"`
-	ID          string `json:"id"` // MD5 hash of Chinese text
+	FilePath      string   `json:"file_path"`
+	Line          int      `json:"line"`
+	Column        int      `json:"column"`
+	RawText       string   `json:"raw_text"`
+	QuoteType     string   `json:"quote_type"` // " or '
+	ChineseText   string   `json:"chinese_text"`
+	ID            string   `json:"id"` // MD5 hash of Chinese text
+	IsSprintf     bool     `json:"is_sprintf"`     // 是否被 fmt.Sprintf 包裹
+	SprintfArgs   []string `json:"sprintf_args"`   // Sprintf 的参数
+	SprintfPrefix string   `json:"sprintf_prefix"` // Sprintf 前缀部分，如 "fmt.Sprintf("
 }
 
 // Scanner scans files for Chinese text
@@ -36,6 +39,9 @@ var (
 	singleQuotePattern = regexp.MustCompile(`'([^']*)'`)
 	// Pattern to match function definitions: func (receiver) Name(params) returns {
 	funcPattern = regexp.MustCompile(`^\s*func\s+(\([^)]*\)\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\(`)
+	// Pattern to match fmt.Sprintf or sprintf with format string and arguments
+	// Matches: fmt.Sprintf("...%d...", arg1, arg2) or sprintf("...%d...", arg)
+	sprintfPattern = regexp.MustCompile(`(?i)(?:fmt\.)?sprintf\s*\(\s*["']`)
 )
 
 // containsChinese checks if a string contains Chinese characters
@@ -204,6 +210,13 @@ func (s *Scanner) findMatchesInLine(filePath string, lineNum int, line string, p
 	// Find comment start position (for Go // comments)
 	commentStart := strings.Index(line, "//")
 
+	// Check if this line contains fmt.Sprintf or sprintf
+	isSprintfLine := sprintfPattern.MatchString(line)
+	var sprintfInfo *SprintfInfo
+	if isSprintfLine {
+		sprintfInfo = parseSprintf(line)
+	}
+
 	for _, match := range pattern.FindAllStringIndex(line, -1) {
 		start, end := match[0], match[1]
 
@@ -228,7 +241,7 @@ func (s *Scanner) findMatchesInLine(filePath string, lineNum int, line string, p
 		// Generate ID from Chinese text
 		id := generateID(innerText)
 
-		matches = append(matches, Match{
+		m := Match{
 			FilePath:    filePath,
 			Line:        lineNum,
 			Column:      start + 1, // 1-based column
@@ -236,10 +249,135 @@ func (s *Scanner) findMatchesInLine(filePath string, lineNum int, line string, p
 			QuoteType:   quoteType,
 			ChineseText: innerText,
 			ID:          id,
-		})
+		}
+
+		// Check if this match is part of a Sprintf call
+		if sprintfInfo != nil && start >= sprintfInfo.FormatStart && end <= sprintfInfo.FormatEnd {
+			m.IsSprintf = true
+			m.SprintfArgs = sprintfInfo.Args
+			m.SprintfPrefix = sprintfInfo.Prefix
+		}
+
+		matches = append(matches, m)
 	}
 
 	return matches
+}
+
+// SprintfInfo holds information about a Sprintf call
+type SprintfInfo struct {
+	Prefix      string   // e.g., "fmt.Sprintf(" or "sprintf("
+	FormatStart int      // Start position of format string
+	FormatEnd   int      // End position of format string
+	Args        []string // Arguments after format string
+}
+
+// parseSprintf parses a Sprintf call and extracts format string and arguments
+func parseSprintf(line string) *SprintfInfo {
+	// Find sprintf position
+	sprintfIdx := strings.Index(strings.ToLower(line), "sprintf")
+	if sprintfIdx == -1 {
+		return nil
+	}
+
+	// Find the opening parenthesis after sprintf
+	parenStart := strings.Index(line[sprintfIdx:], "(")
+	if parenStart == -1 {
+		return nil
+	}
+	parenStart += sprintfIdx
+
+	// Determine prefix (fmt.Sprintf or just sprintf)
+	prefix := "sprintf("
+	if sprintfIdx >= 4 && line[sprintfIdx-4:sprintfIdx] == "fmt." {
+		prefix = "fmt.Sprintf("
+		sprintfIdx -= 4
+	}
+
+	// Find the format string (first quoted string after opening paren)
+	rest := line[parenStart+1:]
+
+	// Skip whitespace
+	i := 0
+	for i < len(rest) && (rest[i] == ' ' || rest[i] == '\t') {
+		i++
+	}
+
+	// Check if it starts with a quote
+	if i >= len(rest) || (rest[i] != '"' && rest[i] != '\'') {
+		return nil
+	}
+
+	quoteChar := rest[i]
+	formatStart := parenStart + 1 + i
+
+	// Find the end of the format string
+	formatEnd := -1
+	for j := i + 1; j < len(rest); j++ {
+		if rest[j] == quoteChar && rest[j-1] != '\\' {
+			formatEnd = parenStart + 1 + j + 1
+			break
+		}
+	}
+
+	if formatEnd == -1 {
+		return nil
+	}
+
+	// Extract arguments after format string
+	args := []string{}
+	argsStr := rest[formatEnd-(parenStart+1):]
+
+	// Find arguments (comma-separated until closing paren)
+	parenDepth := 0
+	currentArg := ""
+	inString := false
+	stringChar := byte(0)
+
+	for i := 0; i < len(argsStr); i++ {
+		ch := argsStr[i]
+
+		if !inString && (ch == '"' || ch == '\'') {
+			inString = true
+			stringChar = ch
+			currentArg += string(ch)
+		} else if inString && ch == stringChar && (i == 0 || argsStr[i-1] != '\\') {
+			inString = false
+			currentArg += string(ch)
+		} else if !inString {
+			if ch == '(' {
+				parenDepth++
+				currentArg += string(ch)
+			} else if ch == ')' {
+				if parenDepth == 0 {
+					// End of sprintf call
+					if strings.TrimSpace(currentArg) != "" {
+						args = append(args, strings.TrimSpace(currentArg))
+					}
+					break
+				}
+				parenDepth--
+				currentArg += string(ch)
+			} else if ch == ',' && parenDepth == 0 {
+				// End of current argument
+				if strings.TrimSpace(currentArg) != "" {
+					args = append(args, strings.TrimSpace(currentArg))
+				}
+				currentArg = ""
+			} else {
+				currentArg += string(ch)
+			}
+		} else {
+			currentArg += string(ch)
+		}
+	}
+
+	return &SprintfInfo{
+		Prefix:      prefix,
+		FormatStart: formatStart,
+		FormatEnd:   formatEnd,
+		Args:        args,
+	}
 }
 
 // shouldSkipText checks if text should be skipped (e.g., image paths)
