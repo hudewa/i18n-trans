@@ -40,9 +40,10 @@ type ScanConfig struct {
 
 // OutputConfig holds output configuration
 type OutputConfig struct {
-	SQLDir     string `mapstructure:"sql_dir"`
-	ModuleName string `mapstructure:"module_name"`
-	UpdatedBy  string `mapstructure:"updated_by"`
+	SQLDir       string `mapstructure:"sql_dir"`
+	ModuleName   string `mapstructure:"module_name"`
+	UpdatedBy    string `mapstructure:"updated_by"`
+	ReplaceMode  string `mapstructure:"replace_mode"` // 替换模式: "simple" (默认) 或 "i18n"
 }
 
 // DefaultAPIKey 默认使用腾讯云提供的 API Key
@@ -68,9 +69,10 @@ func DefaultConfig() *Config {
 			ExcludePatterns: []string{"*_test.go", "*.min.js"},
 		},
 		Output: OutputConfig{
-			SQLDir:     "./sql",
-			ModuleName: "doubao",
-			UpdatedBy:  "doubao",
+			SQLDir:      "./sql",
+			ModuleName:  "doubao",
+			UpdatedBy:   "doubao",
+			ReplaceMode: "i18n",
 		},
 	}
 }
@@ -279,6 +281,9 @@ output:
   sql_dir: "./sql"
   module_name: "doubao"
   updated_by: "doubao"
+  replace_mode: "i18n"   # 替换模式: "i18n" (默认) 或 "simple"
+                        # i18n:   i18n.TextT(ctx, "module.id")
+                        # simple: "module.id"
 `
 	return os.WriteFile(path, []byte(example), 0644)
 }

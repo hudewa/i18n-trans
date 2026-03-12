@@ -11,15 +11,29 @@ import (
 
 // Replacer replaces Chinese text with module.identification format
 type Replacer struct {
-	moduleName string
-	dryRun     bool
+	moduleName    string
+	dryRun        bool
+	replaceMode   string // "simple" or "i18n"
 }
 
 // New creates a new Replacer
 func New(moduleName string, dryRun bool) *Replacer {
 	return &Replacer{
-		moduleName: moduleName,
-		dryRun:     dryRun,
+		moduleName:  moduleName,
+		dryRun:      dryRun,
+		replaceMode: "i18n",
+	}
+}
+
+// NewWithMode creates a new Replacer with specified replace mode
+func NewWithMode(moduleName string, dryRun bool, replaceMode string) *Replacer {
+	if replaceMode == "" {
+		replaceMode = "i18n"
+	}
+	return &Replacer{
+		moduleName:  moduleName,
+		dryRun:      dryRun,
+		replaceMode: replaceMode,
 	}
 }
 
@@ -105,8 +119,8 @@ func (r *Replacer) replaceFile(filePath string, matches []scanner.Match) (Replac
 
 // replaceInLine replaces the Chinese text in a line
 func (r *Replacer) replaceInLine(line string, match scanner.Match) (string, bool) {
-	// Build replacement string: "module.id" or 'module.id'
-	replacement := match.QuoteType + r.moduleName + "." + match.ID + match.QuoteType
+	// Build replacement string based on mode
+	replacement := r.buildReplacement(match)
 
 	// Find the exact occurrence
 	idx := strings.Index(line, match.RawText)
@@ -116,6 +130,19 @@ func (r *Replacer) replaceInLine(line string, match scanner.Match) (string, bool
 	}
 
 	return line[:idx] + replacement + line[idx+len(match.RawText):], true
+}
+
+// buildReplacement builds the replacement string based on replace mode
+func (r *Replacer) buildReplacement(match scanner.Match) string {
+	identifier := r.moduleName + "." + match.ID
+
+	if r.replaceMode == "i18n" {
+		// i18n mode: i18n.TextT(ctx, "module.id")
+		return "i18n.TextT(ctx, " + match.QuoteType + identifier + match.QuoteType + ")"
+	}
+
+	// Simple mode: "module.id" or 'module.id'
+	return match.QuoteType + identifier + match.QuoteType
 }
 
 // replaceWithFlexibility tries to find and replace with more flexibility
@@ -129,7 +156,7 @@ func (r *Replacer) replaceWithFlexibility(line string, match scanner.Match) (str
 		`'` + chineseText + `'`,
 	}
 
-	replacement := match.QuoteType + r.moduleName + "." + match.ID + match.QuoteType
+	replacement := r.buildReplacement(match)
 
 	for _, pattern := range patterns {
 		if idx := strings.Index(line, pattern); idx != -1 {
@@ -175,10 +202,10 @@ func (r *Replacer) Preview(matches []scanner.Match) string {
 		sb.WriteString(strings.Repeat("-", 50) + "\n")
 
 		for _, m := range fileMatchList {
-			replacement := r.moduleName + "." + m.ID
+			replacement := r.buildReplacement(m)
 			sb.WriteString(fmt.Sprintf("  Line %d, Col %d:\n", m.Line, m.Column))
 			sb.WriteString(fmt.Sprintf("    Original: %s\n", m.RawText))
-			sb.WriteString(fmt.Sprintf("    Replace:  %s%s%s\n", m.QuoteType, replacement, m.QuoteType))
+			sb.WriteString(fmt.Sprintf("    Replace:  %s\n", replacement))
 			sb.WriteString(fmt.Sprintf("    Chinese:  %s\n\n", m.ChineseText))
 		}
 	}

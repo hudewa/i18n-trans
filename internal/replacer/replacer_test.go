@@ -23,6 +23,51 @@ func TestNew(t *testing.T) {
 	if !r.dryRun {
 		t.Error("dryRun should be true")
 	}
+
+	if r.replaceMode != "i18n" {
+		t.Errorf("replaceMode = %q, want %q", r.replaceMode, "i18n")
+	}
+}
+
+func TestNewWithMode(t *testing.T) {
+	tests := []struct {
+		name        string
+		moduleName  string
+		dryRun      bool
+		replaceMode string
+		wantMode    string
+	}{
+		{
+			name:        "i18n mode",
+			moduleName:  "testmodule",
+			dryRun:      true,
+			replaceMode: "i18n",
+			wantMode:    "i18n",
+		},
+		{
+			name:        "simple mode",
+			moduleName:  "testmodule",
+			dryRun:      false,
+			replaceMode: "simple",
+			wantMode:    "simple",
+		},
+		{
+			name:        "empty mode defaults to i18n",
+			moduleName:  "testmodule",
+			dryRun:      false,
+			replaceMode: "",
+			wantMode:    "i18n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := NewWithMode(tt.moduleName, tt.dryRun, tt.replaceMode)
+			if r.replaceMode != tt.wantMode {
+				t.Errorf("replaceMode = %q, want %q", r.replaceMode, tt.wantMode)
+			}
+		})
+	}
 }
 
 func TestSortMatchesByLineDesc(t *testing.T) {
@@ -52,7 +97,7 @@ func TestSortMatchesByLineDesc(t *testing.T) {
 }
 
 func TestReplaceInLine(t *testing.T) {
-	r := New("myapp", false)
+	r := NewWithMode("myapp", false, "simple")
 
 	tests := []struct {
 		name       string
@@ -112,8 +157,57 @@ func TestReplaceInLine(t *testing.T) {
 	}
 }
 
+func TestReplaceInLineI18nMode(t *testing.T) {
+	r := NewWithMode("myapp", false, "i18n")
+
+	tests := []struct {
+		name       string
+		line       string
+		match      scanner.Match
+		expected   string
+		shouldReplace bool
+	}{
+		{
+			name: "i18n模式双引号替换",
+			line: `fmt.Println("你好世界")`,
+			match: scanner.Match{
+				RawText:     `"你好世界"`,
+				QuoteType:   `"`,
+				ChineseText: "你好世界",
+				ID:          "abc123",
+			},
+			expected:      `fmt.Println(i18n.TextT(ctx, "myapp.abc123"))`,
+			shouldReplace: true,
+		},
+		{
+			name: "i18n模式单引号替换",
+			line: `print('你好')`,
+			match: scanner.Match{
+				RawText:     `'你好'`,
+				QuoteType:   `'`,
+				ChineseText: "你好",
+				ID:          "xyz789",
+			},
+			expected:      `print(i18n.TextT(ctx, 'myapp.xyz789'))`,
+			shouldReplace: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, replaced := r.replaceInLine(tt.line, tt.match)
+			if replaced != tt.shouldReplace {
+				t.Errorf("replaceInLine() replaced = %v, want %v", replaced, tt.shouldReplace)
+			}
+			if replaced && result != tt.expected {
+				t.Errorf("replaceInLine() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestReplaceWithFlexibility(t *testing.T) {
-	r := New("app", false)
+	r := NewWithMode("app", false, "simple")
 
 	tests := []struct {
 		name       string

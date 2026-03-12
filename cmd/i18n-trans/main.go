@@ -26,6 +26,7 @@ var (
 	baseURL      string
 	model        string
 	moduleName   string
+	replaceMode  string
 )
 
 var rootCmd = &cobra.Command{
@@ -99,6 +100,7 @@ func init() {
 	processCmd.Flags().StringVar(&baseURL, "base-url", "", "Doubao API base URL")
 	processCmd.Flags().StringVarP(&model, "model", "m", "", "Doubao model name")
 	processCmd.Flags().StringVar(&moduleName, "module", "", "module name for identification")
+	processCmd.Flags().StringVar(&replaceMode, "replace-mode", "", "replace mode: simple (default) or i18n")
 
 	// Init command flags
 	initCmd.Flags().StringVarP(&initOutput, "output", "o", "config.yaml", "output file path")
@@ -266,6 +268,9 @@ func runProcess(cmd *cobra.Command, args []string) error {
 	if moduleName != "" {
 		cfg.Output.ModuleName = moduleName
 	}
+	if replaceMode != "" {
+		cfg.Output.ReplaceMode = replaceMode
+	}
 
 	// Validate config
 	if err := cfg.Validate(); err != nil {
@@ -345,7 +350,7 @@ func runProcess(cmd *cobra.Command, args []string) error {
 
 	// Replace if requested
 	if replace || dryRun {
-		r := replacer.New(cfg.Output.ModuleName, dryRun)
+		r := replacer.NewWithMode(cfg.Output.ModuleName, dryRun, cfg.Output.ReplaceMode)
 
 		if dryRun {
 			fmt.Println(r.Preview(allMatches))
