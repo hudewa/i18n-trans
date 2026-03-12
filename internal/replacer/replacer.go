@@ -194,17 +194,9 @@ func (r *Replacer) replaceSprintfInLine(line string, match scanner.Match) (strin
 }
 
 // replaceSprintfWithMapArg handles Sprintf with map[string]any argument (template variables)
-// This handles both inline and multiline map definitions
+// Simplified approach: just replace the Sprintf part, keep the original map argument as-is
 func (r *Replacer) replaceSprintfWithMapArg(line string, match scanner.Match) (string, bool) {
-	// Build replacement with placeholder for map argument
 	identifier := r.moduleName + "." + match.ID
-
-	var replacement string
-	if r.replaceMode == "i18n" {
-		replacement = "i18n.TextTf(ctx, " + match.QuoteType + identifier + match.QuoteType + ", __MAP_ARG__)"
-	} else {
-		replacement = "fmt.Sprintf(" + match.QuoteType + identifier + match.QuoteType + ", __MAP_ARG__)"
-	}
 
 	// Find the Sprintf prefix in the line
 	sprintfIdx := strings.Index(strings.ToLower(line), "sprintf")
@@ -218,76 +210,47 @@ func (r *Replacer) replaceSprintfWithMapArg(line string, match scanner.Match) (s
 		startIdx = sprintfIdx - 4
 	}
 
-	// Find the opening parenthesis
-	parenStart := strings.Index(line[startIdx:], "(") + startIdx
-	if parenStart < startIdx {
+	// Find the format string position
+	formatEndIdx := strings.Index(line, match.RawText)
+	if formatEndIdx == -1 {
 		return line, false
 	}
 
-	// Find the end of the format string (first comma after the quoted string)
-	formatEndInLine := -1
-	for i := parenStart + 1; i < len(line); i++ {
+	// Find the comma after the format string
+	commaIdx := -1
+	for i := formatEndIdx + len(match.RawText); i < len(line); i++ {
 		if line[i] == ',' {
-			formatEndInLine = i
+			commaIdx = i
 			break
 		}
 	}
 
-	if formatEndInLine == -1 {
-		// Comma not found on this line, the map starts on next line
-		// Just replace up to the format string and let the map be on subsequent lines
-		replacement = strings.Replace(replacement, ", __MAP_ARG__", "", 1)
-		return line[:startIdx] + replacement, true
+	// Build replacement based on mode (without trailing comma, we'll add it from restOfLine)
+	var replacement string
+	if r.replaceMode == "i18n" {
+		replacement = "i18n.TextTf(ctx, " + match.QuoteType + identifier + match.QuoteType
+	} else {
+		replacement = "fmt.Sprintf(" + match.QuoteType + identifier + match.QuoteType
 	}
 
-	// Find where the map argument ends (matching closing brace)
-	// The map may span multiple lines, so we need to find the matching }
-	braceStart := strings.Index(line[formatEndInLine:], "{") + formatEndInLine
-	if braceStart < formatEndInLine {
-		// Opening brace not on this line
-		replacement = strings.Replace(replacement, ", __MAP_ARG__", "", 1)
-		return line[:startIdx] + replacement, true
+	if commaIdx == -1 {
+		// No comma found on this line, map starts on next line
+		// Just replace fmt.Sprintf( with i18n.TextTf(, keep everything else
+		return line[:startIdx] + replacement + line[formatEndIdx+len(match.RawText):], true
 	}
 
-	// Count braces to find the end
-	braceDepth := 1
-	inString := false
-	stringChar := byte(0)
-	endIdx := -1
-
-	for i := braceStart + 1; i < len(line); i++ {
-		ch := line[i]
-
-		if !inString && (ch == '"' || ch == '\'') {
-			inString = true
-			stringChar = ch
-		} else if inString && ch == stringChar && (i > 0 && line[i-1] != '\\') {
-			inString = false
-		} else if !inString {
-			if ch == '{' {
-				braceDepth++
-			} else if ch == '}' {
-				braceDepth--
-				if braceDepth == 0 {
-					// Found the end of map
-					endIdx = i + 1
-					break
-				}
-			}
-		}
+	// Check if map is complete on this line (has closing brace)
+	// restOfLine starts after the comma, so we need to include the comma
+	restOfLine := line[commaIdx:] // This includes the comma
+	if !strings.Contains(restOfLine, "}") {
+		// Map continues on next lines, keep everything after comma as-is
+		// This handles multiline map definitions
+		// Note: replacement already ends with comma, so we use restOfLine as-is
+		return line[:startIdx] + replacement + restOfLine, true
 	}
 
-	if endIdx == -1 {
-		// Map continues on next lines, just replace the Sprintf part
-		replacement = strings.Replace(replacement, ", __MAP_ARG__", "", 1)
-		return line[:startIdx] + replacement, true
-	}
-
-	// Extract the map argument
-	mapArg := strings.TrimSpace(line[formatEndInLine+1 : endIdx])
-	replacement = strings.Replace(replacement, "__MAP_ARG__", mapArg, 1)
-
-	return line[:startIdx] + replacement + line[endIdx:], true
+	// Map is complete on this line, replace normally
+	return line[:startIdx] + replacement + restOfLine, true
 }
 
 // buildReplacement builds the replacement string based on replace mode
@@ -311,6 +274,14 @@ func (r *Replacer) buildReplacement(match scanner.Match) string {
 // buildSprintfReplacement builds replacement for Sprintf pattern
 // fmt.Sprintf("积分兑换商品只能全部退款%d", refundPrice) --> i18n.TextTf(ctx, "ai.id", refundPrice)
 func (r *Replacer) buildSprintfReplacement(match scanner.Match, identifier string) string {
+	// Handle map argument case (template variables with multiline map)
+	if match.HasMapArg {
+		if r.replaceMode == "i18n" {
+			return "i18n.TextTf(ctx, " + match.QuoteType + identifier + match.QuoteType + ", map[string]any{...})"
+		}
+		return "fmt.Sprintf(" + match.QuoteType + identifier + match.QuoteType + ", map[string]any{...})"
+	}
+
 	args := strings.Join(match.SprintfArgs, ", ")
 
 	if r.replaceMode == "i18n" {
