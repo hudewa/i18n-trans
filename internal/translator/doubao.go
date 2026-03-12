@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -159,8 +160,18 @@ func (t *Translator) TranslateTexts(ctx context.Context, texts []string) ([]Tran
 //   - 解析 JSON 响应，支持多种格式容错
 //   - 自动填充 ID 和原始文本到结果中
 func (t *Translator) translateBatch(ctx context.Context, texts []string, ids []string) ([]TranslationResult, error) {
-	// Build prompt for batch translation
-	prompt := buildBatchPrompt(texts)
+	// Extract template variables and replace with placeholders
+	templateInfos := make([]*TemplateVarInfo, len(texts))
+	cleanTexts := make([]string, len(texts))
+
+	for i, text := range texts {
+		info := extractTemplateVars(text)
+		templateInfos[i] = info
+		cleanTexts[i] = info.CleanText
+	}
+
+	// Build prompt for batch translation (using clean texts)
+	prompt := buildBatchPrompt(cleanTexts)
 
 	resp, err := t.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: t.model,
@@ -215,15 +226,77 @@ func (t *Translator) translateBatch(ctx context.Context, texts []string, ids []s
 		}
 	}
 
-	// Ensure IDs are set
+	// Restore template variables and ensure IDs are set
 	for i := range translations {
 		if i < len(ids) {
 			translations[i].ID = ids[i]
 			translations[i].Text = texts[i]
+
+			// Restore template variables in all translations
+			if i < len(templateInfos) && len(templateInfos[i].VarMap) > 0 {
+				translations[i].Zh = restoreTemplateVars(translations[i].Zh, templateInfos[i].VarMap)
+				translations[i].En = restoreTemplateVars(translations[i].En, templateInfos[i].VarMap)
+				translations[i].Id = restoreTemplateVars(translations[i].Id, templateInfos[i].VarMap)
+				translations[i].Th = restoreTemplateVars(translations[i].Th, templateInfos[i].VarMap)
+				translations[i].Vi = restoreTemplateVars(translations[i].Vi, templateInfos[i].VarMap)
+				translations[i].Ms = restoreTemplateVars(translations[i].Ms, templateInfos[i].VarMap)
+			}
 		}
 	}
 
 	return translations, nil
+}
+
+// TemplateVarInfo holds information about template variables in a text
+type TemplateVarInfo struct {
+	OriginalText string            // Original text with template vars
+	CleanText    string            // Text with template vars replaced by placeholders
+	VarMap       map[string]string // Map of placeholder -> template var
+	VarList      []string          // Ordered list of template vars
+}
+
+// extractTemplateVars extracts template variables like {{.Name}} from text
+// and replaces them with placeholders for translation
+func extractTemplateVars(text string) *TemplateVarInfo {
+	// Pattern to match {{.Name}} or {{.User.Name}}
+	re := regexp.MustCompile(`\{\{\.[A-Za-z_][A-Za-z0-9_\.]*\}\}`)
+	matches := re.FindAllString(text, -1)
+
+	if len(matches) == 0 {
+		return &TemplateVarInfo{
+			OriginalText: text,
+			CleanText:    text,
+			VarMap:       make(map[string]string),
+			VarList:      []string{},
+		}
+	}
+
+	varMap := make(map[string]string)
+	varList := []string{}
+	cleanText := text
+
+	for i, match := range matches {
+		placeholder := fmt.Sprintf("___VAR_%d___", i)
+		varMap[placeholder] = match
+		varList = append(varList, match)
+		cleanText = strings.Replace(cleanText, match, placeholder, 1)
+	}
+
+	return &TemplateVarInfo{
+		OriginalText: text,
+		CleanText:    cleanText,
+		VarMap:       varMap,
+		VarList:      varList,
+	}
+}
+
+// restoreTemplateVars restores template variables from placeholders after translation
+func restoreTemplateVars(text string, varMap map[string]string) string {
+	result := text
+	for placeholder, varName := range varMap {
+		result = strings.ReplaceAll(result, placeholder, varName)
+	}
+	return result
 }
 
 // buildBatchPrompt 构建批量翻译的提示词
@@ -238,9 +311,11 @@ func (t *Translator) translateBatch(ctx context.Context, texts []string, ids []s
 //   - 要求 AI 将文本翻译成 5 种语言：英、印尼、泰、越南、马来
 //   - 要求返回严格的 JSON 数组格式
 //   - 每个对象包含字段: zh, en, id, th, vi, ms
+//   - 模板变量如 {{.Name}} 会被替换为占位符，翻译后恢复
 func buildBatchPrompt(texts []string) string {
 	var sb strings.Builder
 	sb.WriteString("Translate the following Chinese texts to multiple languages. ")
+	sb.WriteString("IMPORTANT: Preserve all placeholders like ___VAR_0___, ___VAR_1___ exactly as they are. Do not translate them.\n")
 	sb.WriteString("Return a JSON array where each object has the following structure:\n")
 	sb.WriteString(`{"zh": "original chinese", "en": "english", "id": "indonesian", "th": "thai", "vi": "vietnamese", "ms": "malay"}`)
 	sb.WriteString("\n\nTexts to translate:\n")

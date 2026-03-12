@@ -14,16 +14,19 @@ import (
 
 // Match represents a found Chinese text match
 type Match struct {
-	FilePath      string   `json:"file_path"`
-	Line          int      `json:"line"`
-	Column        int      `json:"column"`
-	RawText       string   `json:"raw_text"`
-	QuoteType     string   `json:"quote_type"` // " or '
-	ChineseText   string   `json:"chinese_text"`
-	ID            string   `json:"id"` // MD5 hash of Chinese text
-	IsSprintf     bool     `json:"is_sprintf"`     // 是否被 fmt.Sprintf 包裹
-	SprintfArgs   []string `json:"sprintf_args"`   // Sprintf 的参数
-	SprintfPrefix string   `json:"sprintf_prefix"` // Sprintf 前缀部分，如 "fmt.Sprintf("
+	FilePath       string            `json:"file_path"`
+	Line           int               `json:"line"`
+	Column         int               `json:"column"`
+	RawText        string            `json:"raw_text"`
+	QuoteType      string            `json:"quote_type"` // " or '
+	ChineseText    string            `json:"chinese_text"`
+	ID             string            `json:"id"` // MD5 hash of Chinese text
+	IsSprintf      bool              `json:"is_sprintf"`      // 是否被 fmt.Sprintf 包裹
+	SprintfArgs    []string          `json:"sprintf_args"`    // Sprintf 的参数
+	SprintfPrefix  string            `json:"sprintf_prefix"`  // Sprintf 前缀部分，如 "fmt.Sprintf("
+	TemplateVars   []string          `json:"template_vars"`   // 模板变量如 ["{{.Name}}", "{{.Age}}"]
+	TemplateMap    map[string]string `json:"template_map"`    // 模板变量到占位符的映射
+	HasMapArg      bool              `json:"has_map_arg"`     // 是否有 map 参数（跨行）
 }
 
 // Scanner scans files for Chinese text
@@ -42,6 +45,8 @@ var (
 	// Pattern to match fmt.Sprintf or sprintf with format string and arguments
 	// Matches: fmt.Sprintf("...%d...", arg1, arg2) or sprintf("...%d...", arg)
 	sprintfPattern = regexp.MustCompile(`(?i)(?:fmt\.)?sprintf\s*\(\s*["']`)
+	// Pattern to match template variables like {{.Name}}, {{.User.Age}}
+	templateVarPattern = regexp.MustCompile(`\{\{\.[A-Za-z_][A-Za-z0-9_\.]*\}\}`)
 )
 
 // containsChinese checks if a string contains Chinese characters
@@ -238,8 +243,23 @@ func (s *Scanner) findMatchesInLine(filePath string, lineNum int, line string, p
 			continue
 		}
 
-		// Generate ID from Chinese text
-		id := generateID(innerText)
+		// Detect template variables like {{.Name}}
+		templateVars := templateVarPattern.FindAllString(innerText, -1)
+
+		// For ID generation, we need to handle template vars consistently
+		// We'll create a version with template vars replaced by placeholders for ID generation
+		idText := innerText
+		templateMap := make(map[string]string)
+		if len(templateVars) > 0 {
+			for i, tv := range templateVars {
+				placeholder := fmt.Sprintf("__VAR_%d__", i)
+				templateMap[tv] = placeholder
+				idText = strings.Replace(idText, tv, placeholder, 1)
+			}
+		}
+
+		// Generate ID from Chinese text (with template vars normalized)
+		id := generateID(idText)
 
 		m := Match{
 			FilePath:    filePath,
@@ -249,6 +269,8 @@ func (s *Scanner) findMatchesInLine(filePath string, lineNum int, line string, p
 			QuoteType:   quoteType,
 			ChineseText: innerText,
 			ID:          id,
+			TemplateVars: templateVars,
+			TemplateMap: templateMap,
 		}
 
 		// Check if this match is part of a Sprintf call
@@ -256,6 +278,11 @@ func (s *Scanner) findMatchesInLine(filePath string, lineNum int, line string, p
 			m.IsSprintf = true
 			m.SprintfArgs = sprintfInfo.Args
 			m.SprintfPrefix = sprintfInfo.Prefix
+			// Check if argsStr contains map (for template variables)
+			argsStr := line[sprintfInfo.FormatEnd:]
+			if strings.Contains(argsStr, "map[string]any") || strings.Contains(argsStr, "map[string]interface") {
+				m.HasMapArg = true
+			}
 		}
 
 		matches = append(matches, m)
@@ -328,7 +355,82 @@ func parseSprintf(line string) *SprintfInfo {
 	args := []string{}
 	argsStr := rest[formatEnd-(parenStart+1):]
 
-	// Find arguments (comma-separated until closing paren)
+	// Check if this line contains map[string]any (template variable pattern)
+	// If so, we need to handle it specially
+	if strings.Contains(argsStr, "map[string]any") || strings.Contains(argsStr, "map[string]interface") {
+		// For template variables with map, extract just the map part
+		mapArg := extractMapArgument(argsStr)
+		if mapArg != "" {
+			args = append(args, mapArg)
+		}
+	} else {
+		// Standard argument parsing
+		args = parseStandardArgs(argsStr)
+	}
+
+	return &SprintfInfo{
+		Prefix:      prefix,
+		FormatStart: formatStart,
+		FormatEnd:   formatEnd,
+		Args:        args,
+	}
+}
+
+// extractMapArgument extracts map argument from args string
+// Handles both inline map and multiline map starting on the same line
+func extractMapArgument(argsStr string) string {
+	// Find map[string]any or map[string]interface{}
+	mapIdx := strings.Index(argsStr, "map[string]")
+	if mapIdx == -1 {
+		return ""
+	}
+
+	// First, find the opening brace after map[...]{
+	braceStart := -1
+	for i := mapIdx; i < len(argsStr); i++ {
+		if argsStr[i] == '{' {
+			braceStart = i
+			break
+		}
+	}
+
+	if braceStart == -1 {
+		return strings.TrimSpace(argsStr[mapIdx:])
+	}
+
+	// Extract from opening brace to the matching closing brace
+	braceDepth := 1  // Start at 1 since we found the opening brace
+	inString := false
+	stringChar := byte(0)
+
+	for i := braceStart + 1; i < len(argsStr); i++ {
+		ch := argsStr[i]
+
+		if !inString && (ch == '"' || ch == '\'') {
+			inString = true
+			stringChar = ch
+		} else if inString && ch == stringChar && (i > 0 && argsStr[i-1] != '\\') {
+			inString = false
+		} else if !inString {
+			if ch == '{' {
+				braceDepth++
+			} else if ch == '}' {
+				braceDepth--
+				if braceDepth == 0 {
+					// End of map
+					return strings.TrimSpace(argsStr[mapIdx : i+1])
+				}
+			}
+		}
+	}
+
+	// If we didn't find the closing brace, return what we have (multiline case)
+	return strings.TrimSpace(argsStr[mapIdx:])
+}
+
+// parseStandardArgs parses standard Sprintf arguments
+func parseStandardArgs(argsStr string) []string {
+	args := []string{}
 	parenDepth := 0
 	currentArg := ""
 	inString := false
@@ -372,12 +474,7 @@ func parseSprintf(line string) *SprintfInfo {
 		}
 	}
 
-	return &SprintfInfo{
-		Prefix:      prefix,
-		FormatStart: formatStart,
-		FormatEnd:   formatEnd,
-		Args:        args,
-	}
+	return args
 }
 
 // shouldSkipText checks if text should be skipped (e.g., image paths)
