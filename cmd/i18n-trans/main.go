@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/hudewa/i18n-trans/internal/generator"
+	"github.com/hudewa/i18n-trans/internal/logger"
 	"github.com/hudewa/i18n-trans/internal/replacer"
 	"github.com/hudewa/i18n-trans/internal/scanner"
 	"github.com/hudewa/i18n-trans/internal/translator"
@@ -249,11 +250,17 @@ func runTranslate(cmd *cobra.Command, args []string) error {
 }
 
 func runProcess(cmd *cobra.Command, args []string) error {
+	// Initialize logger
+	log := logger.New("logs", "aiAgent_i18n.log")
+	log.LogInfo("=== Starting i18n translation process ===")
+
 	// Load config
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
+		log.LogError(fmt.Sprintf("Failed to load config: %v", err))
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+	log.LogInfo("Config loaded successfully")
 
 	// Override config with command line flags
 	if apiKey != "" {
@@ -274,11 +281,14 @@ func runProcess(cmd *cobra.Command, args []string) error {
 
 	// Validate config
 	if err := cfg.Validate(); err != nil {
+		log.LogError(fmt.Sprintf("Config validation failed: %v", err))
 		return err
 	}
+	log.LogInfo("Config validated successfully")
 
 	// 确定扫描目录：命令行参数优先，其次配置文件，最后默认当前目录
 	scanDirs := getScanDirs(cfg.Scan.Dir, scanDir)
+	log.LogInfo(fmt.Sprintf("Scanning directories: %v", scanDirs))
 
 	// Create scanner
 	s := scanner.New(cfg.Scan.IncludeExt, cfg.Scan.ExcludeDirs, cfg.Scan.ExcludePatterns)
@@ -290,41 +300,64 @@ func runProcess(cmd *cobra.Command, args []string) error {
 	for _, dir := range scanDirs {
 		matches, err := s.Scan(dir)
 		if err != nil {
+			log.LogError(fmt.Sprintf("Scan failed for %s: %v", dir, err))
 			return fmt.Errorf("scan failed for %s: %w", dir, err)
 		}
 		allMatches = append(allMatches, matches...)
 	}
 
 	if len(allMatches) == 0 {
-		fmt.Println("No Chinese text found.")
+		msg := "No Chinese text found."
+		fmt.Println(msg)
+		log.LogInfo(msg)
 		return nil
 	}
 
-	fmt.Printf("Found %d Chinese text occurrences\n", len(allMatches))
+	msg := fmt.Sprintf("Found %d Chinese text occurrences", len(allMatches))
+	fmt.Println(msg)
+	log.LogInfo(msg)
 
 	// Get unique Chinese texts and their IDs
 	uniqueTexts := scanner.UniqueChineseTexts(allMatches)
-	fmt.Printf("Unique texts to translate: %d\n", len(uniqueTexts))
+	msg = fmt.Sprintf("Unique texts to translate: %d", len(uniqueTexts))
+	fmt.Println(msg)
+	log.LogInfo(msg)
 
 	// Create translator
 	t := translator.New(cfg.Doubao.APIKey, cfg.Doubao.BaseURL, cfg.Doubao.Model)
 
 	fmt.Println("Translating...")
+	log.LogInfo("Starting translation...")
 
 	// Translate
 	ctx := context.Background()
 	results, err := t.TranslateTexts(ctx, uniqueTexts)
 	if err != nil {
+		log.LogError(fmt.Sprintf("Translation failed: %v", err))
 		return fmt.Errorf("translation failed: %w", err)
 	}
+	log.LogInfo(fmt.Sprintf("Translation completed: %d results", len(results)))
 
-	// Create generator
+	// Create generators
 	g := generator.New(outputDir, cfg.Output.ModuleName, cfg.Output.UpdatedBy)
+	csvGen := generator.NewCSVGenerator(outputDir)
 
 	// Generate SQL
 	sqlPath, err := g.GenerateSQL(results)
 	if err != nil {
+		log.LogError(fmt.Sprintf("Failed to generate SQL: %v", err))
 		return fmt.Errorf("failed to generate SQL: %w", err)
+	}
+	log.LogInfo(fmt.Sprintf("SQL file generated: %s", sqlPath))
+
+	// Generate CSV
+	if err := csvGen.AppendToCSV(results); err != nil {
+		log.LogError(fmt.Sprintf("Failed to generate CSV: %v", err))
+		// Don't return error, just log it
+		fmt.Printf("Warning: Failed to generate CSV: %v\n", err)
+	} else {
+		csvPath := outputDir + "/aiAgent.csv"
+		log.LogInfo(fmt.Sprintf("CSV file updated: %s", csvPath))
 	}
 
 	fmt.Printf("\nSQL file generated: %s\n", sqlPath)
@@ -332,6 +365,7 @@ func runProcess(cmd *cobra.Command, args []string) error {
 	// Print report
 	report := g.GenerateReport(results)
 	fmt.Println(report)
+	log.LogInfo(report)
 
 	// Create a map of Chinese text to ID for replacement
 	textToID := make(map[string]string)
@@ -353,13 +387,17 @@ func runProcess(cmd *cobra.Command, args []string) error {
 		r := replacer.NewWithMode(cfg.Output.ModuleName, dryRun, cfg.Output.ReplaceMode)
 
 		if dryRun {
-			fmt.Println(r.Preview(allMatches))
+			preview := r.Preview(allMatches)
+			fmt.Println(preview)
+			log.LogInfo("Dry run preview generated")
 		}
 
 		if replace {
 			fmt.Println("Replacing Chinese text in files...")
+			log.LogInfo("Starting replacement...")
 			replaceResults, err := r.ReplaceAll(allMatches)
 			if err != nil {
+				log.LogError(fmt.Sprintf("Replacement failed: %v", err))
 				return fmt.Errorf("replacement failed: %w", err)
 			}
 
@@ -367,15 +405,19 @@ func runProcess(cmd *cobra.Command, args []string) error {
 			for _, rr := range replaceResults {
 				if rr.Error != nil {
 					fmt.Printf("  Error in %s: %v\n", rr.FilePath, rr.Error)
+					log.LogError(fmt.Sprintf("Error in %s: %v", rr.FilePath, rr.Error))
 				} else if rr.Replacements > 0 {
 					totalReplacements += rr.Replacements
 					fmt.Printf("  %s: %d replacements\n", rr.FilePath, rr.Replacements)
+					log.LogInfo(fmt.Sprintf("%s: %d replacements", rr.FilePath, rr.Replacements))
 				}
 			}
 			fmt.Printf("\nTotal replacements: %d\n", totalReplacements)
+			log.LogInfo(fmt.Sprintf("Total replacements: %d", totalReplacements))
 		}
 	}
 
+	log.LogInfo("=== i18n translation process completed ===")
 	return nil
 }
 

@@ -26,23 +26,28 @@ func New(outputDir, moduleName, updatedBy string) *Generator {
 	}
 }
 
-// GenerateSQL generates SQL file from translation results
+// GenerateSQL generates SQL file from translation results (appends to aiAgent.sql)
 func (g *Generator) GenerateSQL(results []translator.TranslationResult) (string, error) {
 	// Create output directory if not exists
 	if err := os.MkdirAll(g.outputDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Generate filename with timestamp
-	timestamp := time.Now().Format("20060102_150405")
-	filename := fmt.Sprintf("i18n_%s.sql", timestamp)
+	// Use fixed filename aiAgent.sql
+	filename := "aiAgent.sql"
 	filepath := filepath.Join(g.outputDir, filename)
 
 	// Generate SQL content
 	content := g.generateSQLContent(results)
 
-	// Write to file
-	if err := os.WriteFile(filepath, []byte(content), 0644); err != nil {
+	// Append to file (create if not exists)
+	f, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to open SQL file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(content); err != nil {
 		return "", fmt.Errorf("failed to write SQL file: %w", err)
 	}
 
@@ -53,11 +58,14 @@ func (g *Generator) GenerateSQL(results []translator.TranslationResult) (string,
 func (g *Generator) generateSQLContent(results []translator.TranslationResult) string {
 	var sb strings.Builder
 
-	// Add header comment
-	sb.WriteString(fmt.Sprintf("-- Auto-generated i18n SQL\n"))
-	sb.WriteString(fmt.Sprintf("-- Generated at: %s\n", time.Now().Format("2006-01-02 15:04:05")))
+	// Add 3 empty lines before new content
+	sb.WriteString("\n\n\n")
+
+	// Add header comment with timestamp
+	sb.WriteString(fmt.Sprintf("-- ==========================================\n"))
+	sb.WriteString(fmt.Sprintf("-- Writing started at: %s\n", time.Now().Format("2006-01-02 15:04:05")))
 	sb.WriteString(fmt.Sprintf("-- Total translations: %d\n", len(results)))
-	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("-- ==========================================\n"))
 
 	// Generate INSERT statements
 	for _, result := range results {
